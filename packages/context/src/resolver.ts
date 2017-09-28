@@ -46,19 +46,19 @@ export function instantiateClass<T>(
   if (isPromise(propertiesOrPromise)) {
     return propertiesOrPromise.then(props => {
       if (isPromise(inst)) {
-        // Inject the properties asynchrounously
+        // Inject the properties asynchronously
         return inst.then(obj => Object.assign(obj, props));
       } else {
-        // Inject the properties synchrounously
+        // Inject the properties synchronously
         return Object.assign(inst, props);
       }
     });
   } else {
     if (isPromise(inst)) {
-      // Inject the properties asynchrounously
+      // Inject the properties asynchronously
       return inst.then(obj => Object.assign(obj, propertiesOrPromise));
     } else {
-      // Inject the properties synchrounously
+      // Inject the properties synchronously
       return Object.assign(inst, propertiesOrPromise);
     }
   }
@@ -86,27 +86,34 @@ function resolve<T>(ctx: Context, injection: Injection): ValueOrPromise<T> {
  * The function returns an argument array when all dependencies were
  * resolved synchronously, or a Promise otherwise.
  *
- * @param fn The function for which the arguments should be resolved.
+ * @param target The class for constructor injection or prototype for method
+ * injection
  * @param ctx The context containing values for `@inject` resolution
+ * @param method The optional method name. If not present, the constructor will
+ * be used.
  */
 export function resolveInjectedArguments(
-  fn: Function,
+  // tslint:disable-next-line:no-any
+  target: any,
   ctx: Context,
+  method?: string,
 ): BoundValue[] | Promise<BoundValue[]> {
   // NOTE: the array may be sparse, i.e.
   //   Object.keys(injectedArgs).length !== injectedArgs.length
   // Example value:
   //   [ , 'key1', , 'key2']
-  const injectedArgs = describeInjectedArguments(fn);
+  const injectedArgs = describeInjectedArguments(target, method);
 
-  const args: BoundValue[] = new Array(fn.length);
+  const argLength = method ? target[method].length: target.length;
+  const args: BoundValue[] = new Array(argLength);
   let asyncResolvers: Promise<void>[] | undefined = undefined;
 
-  for (let ix = 0; ix < fn.length; ix++) {
+  for (let ix = 0; ix < argLength; ix++) {
     const injection = injectedArgs[ix];
     if (!injection.bindingKey && !injection.resolve) {
+      const name = method || target.name;
       throw new Error(
-        `Cannot resolve injected arguments for function ${fn.name}: ` +
+        `Cannot resolve injected arguments for function ${name}: ` +
           `The argument ${ix + 1} was not decorated for dependency injection.`,
       );
     }
@@ -126,6 +133,29 @@ export function resolveInjectedArguments(
     return Promise.all(asyncResolvers).then(() => args);
   } else {
     return args;
+  }
+}
+
+/**
+ * Invoke an instance method with dependency injection
+ * @param target The instance or class prototype
+ * @param method Name of the method
+ * @param ctx Context
+ * @param instance An instance of the class
+ */
+export function invokeMethod<T>(
+  // tslint:disable-next-line:no-any
+  target: any,
+  method: string,
+  ctx: Context,
+): ValueOrPromise<BoundValue> {
+  const argsOrPromise = resolveInjectedArguments(target, ctx, method);
+  if (isPromise(argsOrPromise)) {
+    // Invoke the target method asynchronously
+    return argsOrPromise.then(args => target[method](...args));
+  } else {
+    // Invoke the target method synchronously
+    return target[method](...argsOrPromise);
   }
 }
 
