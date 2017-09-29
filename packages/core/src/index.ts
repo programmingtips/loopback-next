@@ -13,3 +13,6 @@ export * from './application';
 export * from './promisify';
 export * from './component';
 export * from './keys';
+
+export * from './action';
+

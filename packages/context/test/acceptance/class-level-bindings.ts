@@ -4,7 +4,13 @@
 // License text available at https://opensource.org/licenses/MIT
 
 import {expect} from '@loopback/testlab';
-import {Context, inject, Setter, Getter} from '../..';
+import {
+  Context,
+  inject,
+  Setter,
+  Getter,
+  describeInjectedArguments,
+} from '../..';
 
 const INFO_CONTROLLER = 'controllers.info';
 
@@ -157,6 +163,9 @@ describe('Context bindings - Injecting dependencies of classes', () => {
       constructor(@inject.setter('key') public setter: Setter<string>) {}
     }
 
+    const injections = describeInjectedArguments(Store);
+    expect(injections.length).to.eql(1);
+    expect(injections[0].metadata!.setter).to.be.true();
     ctx.bind('store').toClass(Store);
     const store = ctx.getSync('store');
 
