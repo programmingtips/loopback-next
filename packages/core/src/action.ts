@@ -4,11 +4,9 @@
 // License text available at https://opensource.org/licenses/MIT
 
 import {
-  Context,
   Reflector,
   Constructor,
   Injection,
-  instantiateClass,
   describeInjectedArguments,
   describeInjectedProperties,
 } from '@loopback/context';
@@ -122,7 +120,7 @@ function populateActionMetadata(
  * ```
  * @param meta Action metadata
  */
-export function action(meta?: Partial<ActionClass|ActionMethod>) {
+export function action(meta?: Partial<ActionClass | ActionMethod>) {
   return function(target: any, method?: string | symbol) {
     let name;
     if (method) {
@@ -135,7 +133,7 @@ export function action(meta?: Partial<ActionClass|ActionMethod>) {
     }
     let actionMetadata: ActionMetadata;
     actionMetadata = method
-      ? <ActionMethod> {
+      ? <ActionMethod>{
           target,
           method,
           name,
@@ -159,9 +157,9 @@ export function action(meta?: Partial<ActionClass|ActionMethod>) {
       // Method level decoration
 
       // First handle bindReturnValueAs
-      const methodMeta = <Partial<ActionMethod>> meta;
+      const methodMeta = <Partial<ActionMethod>>meta;
       if (meta && methodMeta.bindsReturnValueAs) {
-        (<ActionMethod> actionMetadata).bindsReturnValueAs =
+        (<ActionMethod>actionMetadata).bindsReturnValueAs =
           methodMeta.bindsReturnValueAs;
         actionMetadata.fulfills.push(methodMeta.bindsReturnValueAs);
       }
@@ -174,13 +172,16 @@ export function action(meta?: Partial<ActionClass|ActionMethod>) {
       // Aggregate all methods for simpler retrieval
       const actionMethods: {[p: string]: ActionMethod} =
         Reflector.getOwnMetadata(ACTION_METHODS_KEY, target) || {};
-      actionMethods[method] = <ActionMethod> actionMetadata;
+      actionMethods[method] = <ActionMethod>actionMetadata;
       Reflector.defineMetadata(ACTION_METHODS_KEY, actionMethods, target);
     } else {
       // Class level decoration
-      const injections = describeInjectedArguments(target).concat(
-        Object.values(describeInjectedProperties(target.prototype)),
-      );
+      let injections: Injection[] = [];
+      injections = injections.concat(describeInjectedArguments(target));
+      const propertyInjections = describeInjectedProperties(target.prototype);
+      for (const m in propertyInjections) {
+        injections.push(propertyInjections[m]);
+      }
       populateActionMetadata(actionMetadata, injections);
       Reflector.defineMetadata(ACTION_KEY, actionMetadata, target);
     }
@@ -196,8 +197,8 @@ export function inspectAction(cls: Constructor<any>) {
     {},
     Reflector.getMetadata(ACTION_METHODS_KEY, cls.prototype),
   );
-  for (const m of Object.values(descriptor.methods)) {
-    m.actionClass = descriptor;
+  for (const m in descriptor.methods) {
+    descriptor.methods[m].actionClass = descriptor;
   }
   return descriptor;
 }

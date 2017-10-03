@@ -104,7 +104,7 @@ export function resolveInjectedArguments(
   //   [ , 'key1', , 'key2']
   const injectedArgs = describeInjectedArguments(target, method);
 
-  const argLength = method ? target[method].length: target.length;
+  const argLength = method ? target[method].length : target.length;
   const args: BoundValue[] = new Array(argLength);
   let asyncResolvers: Promise<void>[] | undefined = undefined;
 
@@ -143,7 +143,7 @@ export function resolveInjectedArguments(
  * @param ctx Context
  * @param instance An instance of the class
  */
-export function invokeMethod<T>(
+export function invokeMethod(
   // tslint:disable-next-line:no-any
   target: any,
   method: string,

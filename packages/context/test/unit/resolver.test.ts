@@ -375,7 +375,7 @@ describe('method injection', () => {
     }
 
     expect(() => {
-      const t = invokeMethod(TestClass.prototype, 'test', ctx);
+      invokeMethod(TestClass.prototype, 'test', ctx);
     }).to.throw(/The key .+ was not bound to any value/);
   });
 });

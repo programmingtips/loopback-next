@@ -312,7 +312,8 @@ describe('Action', () => {
     }
     const logger = await ctx.get('actions.Logger');
     expect(logger.lastMessage).to.match(
-      /\[INFO\]\[LoopBack\] TracingId: tracing:\d+,\d+, Duration: \d+/);
+      /\[INFO\]\[LoopBack\] TracingId: tracing:\d+,\d+, Duration: \d+/,
+    );
   });
 
   function givenContext() {
