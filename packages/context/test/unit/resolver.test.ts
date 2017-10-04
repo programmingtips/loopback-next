@@ -378,6 +378,17 @@ describe('method injection', () => {
       invokeMethod(TestClass.prototype, 'test', ctx);
     }).to.throw(/The key .+ was not bound to any value/);
   });
+
+  it('resolves arguments for a static method', () => {
+    class TestClass {
+      static test(@inject('foo') fooBar: string) {
+        return `Hello, ${fooBar}`;
+      }
+    }
+
+    const msg = invokeMethod(TestClass, 'test', ctx);
+    expect(msg).to.eql('Hello, FOO');
+  });
 });
 
 describe('async method injection', () => {

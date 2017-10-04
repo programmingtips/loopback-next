@@ -11,6 +11,7 @@ import {
   describeInjectedProperties,
   Injection,
 } from './inject';
+import * as assert from 'assert';
 
 /**
  * A class constructor accepting arbitrary arguments.
@@ -28,12 +29,15 @@ export type Constructor<T> =
  *
  * @param ctor The class constructor to call.
  * @param ctx The context containing values for `@inject` resolution
+ * @param nonInjectedArgs Optional array of args for non-injected parameters
  */
 export function instantiateClass<T>(
   ctor: Constructor<T>,
   ctx: Context,
+  // tslint:disable-next-line:no-any
+  nonInjectedArgs?: any[],
 ): T | Promise<T> {
-  const argsOrPromise = resolveInjectedArguments(ctor, ctx);
+  const argsOrPromise = resolveInjectedArguments(ctor, ctx, '');
   const propertiesOrPromise = resolveInjectedProperties(ctor, ctx);
   let inst: T | Promise<T>;
   if (isPromise(argsOrPromise)) {
@@ -89,33 +93,48 @@ function resolve<T>(ctx: Context, injection: Injection): ValueOrPromise<T> {
  * @param target The class for constructor injection or prototype for method
  * injection
  * @param ctx The context containing values for `@inject` resolution
- * @param method The optional method name. If not present, the constructor will
+ * @param method The method name. If set to '', the constructor will
  * be used.
+ * @param nonInjectedArgs Optional array of args for non-injected parameters
  */
 export function resolveInjectedArguments(
   // tslint:disable-next-line:no-any
   target: any,
   ctx: Context,
-  method?: string,
+  method: string,
+  // tslint:disable-next-line:no-any
+  nonInjectedArgs?: any[],
 ): BoundValue[] | Promise<BoundValue[]> {
+  if (method) {
+    assert(typeof target[method] === 'function', `Method ${method} not found`);
+  }
   // NOTE: the array may be sparse, i.e.
   //   Object.keys(injectedArgs).length !== injectedArgs.length
   // Example value:
   //   [ , 'key1', , 'key2']
   const injectedArgs = describeInjectedArguments(target, method);
+  nonInjectedArgs = nonInjectedArgs || [];
 
   const argLength = method ? target[method].length : target.length;
   const args: BoundValue[] = new Array(argLength);
   let asyncResolvers: Promise<void>[] | undefined = undefined;
 
+  let nonInjectedIndex = 0;
   for (let ix = 0; ix < argLength; ix++) {
-    const injection = injectedArgs[ix];
-    if (!injection.bindingKey && !injection.resolve) {
+    const injection = ix < injectedArgs.length ? injectedArgs[ix] : undefined;
+    if (injection == null || (!injection.bindingKey && !injection.resolve)) {
       const name = method || target.name;
-      throw new Error(
-        `Cannot resolve injected arguments for function ${name}: ` +
-          `The argument ${ix + 1} was not decorated for dependency injection.`,
-      );
+      if (nonInjectedIndex < nonInjectedArgs.length) {
+        // Set the argument from the non-injected list
+        args[ix] = nonInjectedArgs[nonInjectedIndex++];
+        continue;
+      } else {
+        throw new Error(
+          `Cannot resolve injected arguments for function ${name}: ` +
+            `The arguments[${ix}] is not decorated for dependency injection, ` +
+            `but a value is not supplied`,
+        );
+      }
     }
 
     const valueOrPromise = resolve(ctx, injection);
@@ -138,18 +157,27 @@ export function resolveInjectedArguments(
 
 /**
  * Invoke an instance method with dependency injection
- * @param target The instance or class prototype
+ * @param target Target of the method, it will be the class for a static
+ * method, and instance or class prototype for a prototype method
  * @param method Name of the method
  * @param ctx Context
- * @param instance An instance of the class
+ * @param nonInjectedArgs Optional array of args for non-injected parameters
  */
 export function invokeMethod(
   // tslint:disable-next-line:no-any
   target: any,
   method: string,
   ctx: Context,
+  // tslint:disable-next-line:no-any
+  nonInjectedArgs?: any[],
 ): ValueOrPromise<BoundValue> {
-  const argsOrPromise = resolveInjectedArguments(target, ctx, method);
+  const argsOrPromise = resolveInjectedArguments(
+    target,
+    ctx,
+    method,
+    nonInjectedArgs,
+  );
+  assert(typeof target[method] === 'function', `Method ${method} not found`);
   if (isPromise(argsOrPromise)) {
     // Invoke the target method asynchronously
     return argsOrPromise.then(args => target[method](...args));
