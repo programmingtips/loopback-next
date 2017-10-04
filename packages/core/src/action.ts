@@ -24,9 +24,9 @@ export const ACTION_METHODS_KEY = 'action:methods';
  */
 export interface ActionMetadata {
   /**
-   * Name of the action, default to the class or method name
+   * Name of the group, default to the class or method name
    */
-  name: string;
+  group: string;
   /**
    * An array of events the action fulfills
    */
@@ -104,7 +104,7 @@ function populateActionMetadata(
 /**
  * Decorator for Action classes and methods, for example,
  * ```ts
- * @action({name: 'my-action', fulfills: ['key1'], dependsOn: ['key2']})
+ * @action({group: 'my-group', fulfills: ['key1'], dependsOn: ['key2']})
  * class MyAction {
  *   constructor(@inject('dep1') private dep1: ClassLevelDep) {}
  *
@@ -122,27 +122,32 @@ function populateActionMetadata(
  */
 export function action(meta?: Partial<ActionClass | ActionMethod>) {
   return function(target: any, method?: string | symbol) {
-    let name;
+    let group;
     if (method) {
-      name = `${target.constructor.name}.${method}`;
+      if (typeof target === 'function') {
+        // Static method
+        group = `method:${target.name}.${method}`;
+      } else {
+        group = `method:${target.constructor.name}.prototype.${method}`;
+      }
     } else {
-      name = target.name;
+      group = `class:${target.name}`;
     }
-    if (meta && meta.name) {
-      name = meta.name;
+    if (meta && meta.group) {
+      group = meta.group;
     }
     let actionMetadata: ActionMetadata;
     actionMetadata = method
       ? <ActionMethod>{
           target,
           method,
-          name,
+          group,
           fulfills: [],
           dependsOn: [],
         }
       : {
           target,
-          name,
+          group,
           fulfills: [],
           dependsOn: [],
         };
@@ -218,7 +223,7 @@ function addActionToGraph(graph: any, meta: ActionMetadata) {
   }
   // Add method between dependsOn and fulfills
   graph.add(meta, {
-    group: meta.name,
+    group: meta.group,
     before: meta.fulfills,
     after: meta.dependsOn,
   });
@@ -262,7 +267,7 @@ export function sortActions(
       const method = meta.methods[m];
       if (includeClasses) {
         // Make the method depend on the class
-        method.dependsOn.push(meta.name);
+        method.dependsOn.push(meta.group);
       }
       addActionToGraph(graph, method);
     }

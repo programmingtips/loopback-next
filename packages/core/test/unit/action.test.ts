@@ -37,7 +37,7 @@ describe('Action', () => {
    * - start: Start the timer
    * - stop: Stop the timer and calculates the duration
    */
-  @action({name: 'RoundtripTimer'})
+  @action({group: 'timer-group'})
   class StopWatch {
     /**
      * Start the timer (only to be invoked after http.request is set up)
@@ -158,7 +158,7 @@ describe('Action', () => {
     const meta = Reflector.getMetadata('action', StopWatch);
     expect(meta).to.containEql({
       target: StopWatch,
-      name: 'RoundtripTimer',
+      group: 'timer-group',
       fulfills: [],
       dependsOn: [],
     });
@@ -168,7 +168,7 @@ describe('Action', () => {
     const meta = Reflector.getMetadata('action', Logger);
     expect(meta).to.containEql({
       target: Logger,
-      name: 'Logger',
+      group: 'class:Logger',
       fulfills: ['logging'],
       dependsOn: ['log.prefix', 'log.level'],
     });
@@ -178,7 +178,7 @@ describe('Action', () => {
     const meta1 = Reflector.getMetadata('action', StopWatch.prototype, 'start');
     expect(meta1).to.eql({
       target: StopWatch.prototype,
-      name: 'StopWatch.start',
+      group: 'method:StopWatch.prototype.start',
       method: 'start',
       fulfills: ['startTime'],
       dependsOn: ['http.request'],
@@ -187,7 +187,7 @@ describe('Action', () => {
     const meta2 = Reflector.getMetadata('action', StopWatch.prototype, 'stop');
     expect(meta2).to.eql({
       target: StopWatch.prototype,
-      name: 'StopWatch.stop',
+      group: 'method:StopWatch.prototype.stop',
       method: 'stop',
       fulfills: ['duration'],
       dependsOn: ['startTime', 'invocation'],
@@ -200,14 +200,14 @@ describe('Action', () => {
     expect(meta.target).to.exactly(StopWatch);
     expect(meta).to.containEql({
       target: StopWatch,
-      name: 'RoundtripTimer',
+      group: 'timer-group',
       fulfills: [],
       dependsOn: [],
     });
 
     expect(meta.methods.start).to.containEql({
       target: StopWatch.prototype,
-      name: 'StopWatch.start',
+      group: 'method:StopWatch.prototype.start',
       method: 'start',
       fulfills: ['startTime'],
       dependsOn: ['http.request'],
@@ -215,7 +215,7 @@ describe('Action', () => {
 
     expect(meta.methods.stop).to.containEql({
       target: StopWatch.prototype,
-      name: 'StopWatch.stop',
+      group: 'method:StopWatch.prototype.stop',
       method: 'stop',
       fulfills: ['duration'],
       dependsOn: ['startTime', 'invocation'],
@@ -231,15 +231,15 @@ describe('Action', () => {
   it('sort action classes', () => {
     const nodes = sortActionClasses([Logger, StopWatch, HttpServer, Tracing]);
     expect(
-      nodes.map((n: any) => (typeof n === 'object' ? 'action:' + n.name : n)),
+      nodes.map((n: any) => (typeof n === 'object' ? n.group : n)),
     ).to.eql([
       'log.prefix',
       'log.level',
-      'action:Logger',
+      'class:Logger',
       'logging',
-      'action:RoundtripTimer',
-      'action:HttpServer',
-      'action:Tracing',
+      'timer-group',
+      'class:HttpServer',
+      'class:Tracing',
     ]);
   });
 
@@ -253,19 +253,19 @@ describe('Action', () => {
     ]);
 
     expect(
-      nodes.map((n: any) => (typeof n === 'object' ? 'action:' + n.name : n)),
+      nodes.map((n: any) => (typeof n === 'object' ? n.group : n)),
     ).to.eql([
-      'action:HttpServer.createRequest',
+      'method:HttpServer.prototype.createRequest',
       'http.request',
-      'action:StopWatch.start',
+      'method:StopWatch.prototype.start',
       'startTime',
-      'action:Tracing.setupTracingId',
+      'method:Tracing.prototype.setupTracingId',
       'tracingId',
-      'action:MethodInvoker.invoke',
+      'method:MethodInvoker.prototype.invoke',
       'invocation',
-      'action:StopWatch.stop',
+      'method:StopWatch.prototype.stop',
       'duration',
-      'action:Logger.log',
+      'method:Logger.prototype.log',
       'result',
     ]);
   });
@@ -277,13 +277,13 @@ describe('Action', () => {
     ctx.bind('log.prefix').to('LoopBack');
     for (const c of nodes) {
       ctx
-        .bind('actions.' + c.name)
+        .bind('actions.' + c.target.name)
         .toClass(c.target)
         .inScope(BindingScope.SINGLETON);
     }
 
     nodes.forEach((c: any, index: number) => {
-      const v = ctx.getSync('actions.' + c.name);
+      const v = ctx.getSync('actions.' + c.target.name);
       expect(v instanceof classes[index]).to.be.true();
     });
   });
@@ -298,13 +298,13 @@ describe('Action', () => {
     ctx.bind('log.prefix').to('LoopBack');
     for (const c of actions.filter((a: any) => !a.method)) {
       ctx
-        .bind('actions.' + c.name)
+        .bind('actions.' + c.target.name)
         .toClass(c.target)
         .inScope(BindingScope.SINGLETON);
     }
 
     for (const m of actions.filter((a: any) => !!a.method)) {
-      const v = await ctx.get('actions.' + m.actionClass.name);
+      const v = await ctx.get('actions.' + m.actionClass.target.name);
       const result = await invokeMethod(v, m.method, ctx);
       if (result !== undefined && m.bindsReturnValueAs) {
         ctx.bind(m.bindsReturnValueAs).to(result);

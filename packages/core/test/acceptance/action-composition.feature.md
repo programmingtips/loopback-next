@@ -41,7 +41,7 @@ class Logger {
  * - start: Start the timer
  * - stop: Stop the timer and calculates the duration
  */
-@action({name: 'RoundtripTimer'})
+@action({group: 'RoundtripTimer'})
 class StopWatch {
   // ...
 }
@@ -50,7 +50,7 @@ class StopWatch {
 ## Scenario: Declare action methods
 
 ```ts
-@action({name: 'RoundtripTimer'})
+@action({group: 'RoundtripTimer'})
 class StopWatch {
   /**
    * Start the timer (only to be invoked after http.request is set up)
@@ -72,21 +72,54 @@ class StopWatch {
 }
 ```
 
+## Scenario: Controller scoped action methods
+
+- Given a controller
+- Add action methods to be invoked as part of the sequence to invoke controller
+  methods
+
+```
+class HellController {
+
+  @action({fulfills: ['hello']})
+  preHello() {
+    console.log('preHello');
+  }
+
+  hello(@inject('user') user: string): string {
+    return `Hello, ${user}`;
+  }
+
+  @action({dependsOn: ['hello']})
+  postHello() {
+    console.log('postHello');
+  }
+
+}
+```
+
+
 ## Scenario: Sort action classes and methods
 
 The action classes are sorted based on two attributes:
 
-- `dependsOn`: An array of keys representing dependencies
-- `fulfills`: An array keys representing the action class fulfills
+- `dependsOn`: An array of group names representing dependencies
+- `fulfills`: An array of group names representing the action class fulfills
 
 These two attributes can be explicitly declared with `@action`, for example:
 
 ```
-@action({name: 'my-action', dependsOn: ['a', 'b'], fulfills: ['x', 'y']})
+@action({group: 'my-group', dependsOn: ['a', 'b'], fulfills: ['x', 'y']})
 class MyAction {
   // ...
 }
 ```
+
+If the `group` is not present, it will be derived as follows:
+- class:<className> for action classes
+- method:<className>.<staticMethodName> for static action methods
+- method:<className>.<prototype>.<prototypeMethodName> for prototype action
+  methods
 
 If one or more method parameters are decorated with `@inject`, the corresponding
 keys will be merged into `dependsOn`. For those parameters decorated with
@@ -99,7 +132,7 @@ context. The key will be added to `fulfills` too.
 The fully populated `dependsOn` and `fulfills` create a partial order for the
 action class/method. For example:
 
-['a', 'b] > 'my-action' > ['x', 'y']
+['a', 'b] > 'my-group' > ['x', 'y']
 
 Action classes and methods can be then be sorted using
 [topological sorting](https://en.wikipedia.org/wiki/Topological_sorting).
@@ -117,7 +150,7 @@ const actions = sortActions(
 
 for (const c of actions.filter((a: any) => !a.method)) {
   ctx
-    .bind('actions.' + c.name)
+    .bind('actions.' + c.target.name)
     .toClass(c.target)
     .inScope(BindingScope.SINGLETON);
 }
