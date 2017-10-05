@@ -154,6 +154,12 @@ describe('Action', () => {
     }
   }
 
+  @action()
+  class MyDummyAction {
+    @action()
+    static test(@inject('foo') foo: string) {}
+  }
+
   it('captures class level action metadata for StopWatch', () => {
     const meta = Reflector.getMetadata('action', StopWatch);
     expect(meta).to.containEql({
@@ -180,6 +186,7 @@ describe('Action', () => {
       target: StopWatch.prototype,
       group: 'method:StopWatch.prototype.start',
       method: 'start',
+      isStatic: false,
       fulfills: ['startTime'],
       dependsOn: ['http.request'],
     });
@@ -189,9 +196,22 @@ describe('Action', () => {
       target: StopWatch.prototype,
       group: 'method:StopWatch.prototype.stop',
       method: 'stop',
+      isStatic: false,
       fulfills: ['duration'],
       dependsOn: ['startTime', 'invocation'],
       bindsReturnValueAs: 'duration',
+    });
+  });
+
+  it('captures static method level action metadata', () => {
+    const meta1 = Reflector.getMetadata('action', MyDummyAction, 'test');
+    expect(meta1).to.eql({
+      target: MyDummyAction,
+      group: 'method:MyDummyAction.test',
+      method: 'test',
+      isStatic: true,
+      fulfills: [],
+      dependsOn: ['foo'],
     });
   });
 
@@ -228,8 +248,9 @@ describe('Action', () => {
     expect(meta.methods['createRequest'].dependsOn).to.eql([]);
   });
 
-  it('sort action classes', () => {
-    const nodes = sortActionClasses([Logger, StopWatch, HttpServer, Tracing]);
+  it('sorts action classes', () => {
+    const nodes = sortActionClasses([Logger, StopWatch, HttpServer, Tracing])
+      .actions;
     expect(
       nodes.map((n: any) => (typeof n === 'object' ? n.group : n)),
     ).to.eql([
@@ -243,14 +264,14 @@ describe('Action', () => {
     ]);
   });
 
-  it('sort action methods', () => {
+  it('sorts action methods', () => {
     const nodes = sortActions([
       Logger,
       StopWatch,
       HttpServer,
       MethodInvoker,
       Tracing,
-    ]);
+    ]).actions;
 
     expect(
       nodes.map((n: any) => (typeof n === 'object' ? n.group : n)),
@@ -271,10 +292,12 @@ describe('Action', () => {
   });
 
   it('bind action classes', () => {
-    const classes = [Logger, StopWatch, HttpServer, MethodInvoker, Tracing];
-    const nodes = sortActionClasses(classes, true);
     ctx.bind('log.level').to('INFO');
     ctx.bind('log.prefix').to('LoopBack');
+
+    const classes = [Logger, StopWatch, HttpServer, MethodInvoker, Tracing];
+    const nodes = sortActionClasses(classes, true).actions;
+
     for (const c of nodes) {
       ctx
         .bind('actions.' + c.target.name)
@@ -288,14 +311,56 @@ describe('Action', () => {
     });
   });
 
-  it('creates a sequence of actions', async () => {
-    const actions = sortActions(
-      [Logger, StopWatch, HttpServer, MethodInvoker, Tracing],
-      true,
-      true,
+  it('generates a DOT based dependency graph for actions', async () => {
+    const classes = [Logger, StopWatch, HttpServer, MethodInvoker, Tracing];
+    const dot = sortActions(classes, true, true).toDot();
+    expect(dot).to.eql(
+      `digraph action_dependency_graph {
+  "log.prefix" [shape="ellipse"];
+  "log.level" [shape="ellipse"];
+  "Logger" [shape="box"];
+  "Logger" -> {"logging"};
+  {"log.prefix" "log.level"} -> "Logger";
+  "logging" [shape="ellipse"];
+  "timer-group" [shape="box"];
+  "HttpServer" [shape="box"];
+  "HttpServer.prototype.createRequest" [shape="box", style="rounded"];
+  "HttpServer.prototype.createRequest" -> {"http.request"};
+  {"HttpServer"} -> "HttpServer.prototype.createRequest";
+  "http.request" [shape="ellipse"];
+  "StopWatch.prototype.start" [shape="box", style="rounded"];
+  "StopWatch.prototype.start" -> {"startTime"};
+  {"http.request" "timer-group"} -> "StopWatch.prototype.start";
+  "startTime" [shape="ellipse"];
+  "MethodInvoker" [shape="box"];
+  "Tracing" [shape="box"];
+  "Tracing.prototype.setupTracingId" [shape="box", style="rounded"];
+  "Tracing.prototype.setupTracingId" -> {"tracingId"};
+  {"http.request" "Tracing"} -> "Tracing.prototype.setupTracingId";
+  "tracingId" [shape="ellipse"];
+  "MethodInvoker.prototype.invoke" [shape="box", style="rounded"];
+  "MethodInvoker.prototype.invoke" -> {"invocation" "result"};
+  {"tracingId" "MethodInvoker"} -> "MethodInvoker.prototype.invoke";
+  "invocation" [shape="ellipse"];
+  "StopWatch.prototype.stop" [shape="box", style="rounded"];
+  "StopWatch.prototype.stop" -> {"duration"};
+  {"startTime" "invocation" "timer-group"} -> "StopWatch.prototype.stop";
+  "duration" [shape="ellipse"];
+  "Logger.prototype.log" [shape="box", style="rounded"];
+  {"tracingId" "duration" "invocation" "Logger"} -> "Logger.prototype.log";
+  "result" [shape="ellipse"];
+}
+`,
     );
+  });
+
+  it('creates a sequence of actions', async () => {
     ctx.bind('log.level').to('INFO');
     ctx.bind('log.prefix').to('LoopBack');
+
+    const classes = [Logger, StopWatch, HttpServer, MethodInvoker, Tracing];
+    const actions = sortActions(classes, true, true).actions;
+
     for (const c of actions.filter((a: any) => !a.method)) {
       ctx
         .bind('actions.' + c.target.name)

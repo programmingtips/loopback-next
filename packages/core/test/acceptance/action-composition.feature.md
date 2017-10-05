@@ -98,7 +98,6 @@ class HellController {
 }
 ```
 
-
 ## Scenario: Sort action classes and methods
 
 The action classes are sorted based on two attributes:
@@ -137,6 +136,8 @@ action class/method. For example:
 Action classes and methods can be then be sorted using
 [topological sorting](https://en.wikipedia.org/wiki/Topological_sorting).
 
+![action-dependency-graph](action-graph.png)
+
 ## Scenario: Compose action classes and methods
 
 Sorted action classes will be bound to the context:
@@ -168,3 +169,9 @@ for (const m of actions.filter((a: any) => !!a.method)) {
   }
 }
 ```
+
+## Scenario: Different action styles
+
+- One-way (similar as Express middleware)
+- Cascading (similar as Koa middleware)
+- Result and error handling

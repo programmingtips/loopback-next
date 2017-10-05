@@ -55,6 +55,10 @@ export interface ActionMethod extends ActionMetadata {
    * The action class
    */
   actionClass?: ActionClass;
+  /**
+   * Is the method static
+   */
+  isStatic: boolean;
 }
 
 export interface ActionClass extends ActionMetadata {
@@ -122,11 +126,13 @@ function populateActionMetadata(
  */
 export function action(meta?: Partial<ActionClass | ActionMethod>) {
   return function(target: any, method?: string | symbol) {
-    let group;
+    let group: string;
+    let isStatic = false;
     if (method) {
       if (typeof target === 'function') {
         // Static method
         group = `method:${target.name}.${method}`;
+        isStatic = true;
       } else {
         group = `method:${target.constructor.name}.prototype.${method}`;
       }
@@ -141,6 +147,7 @@ export function action(meta?: Partial<ActionClass | ActionMethod>) {
       ? <ActionMethod>{
           target,
           method,
+          isStatic,
           group,
           fulfills: [],
           dependsOn: [],
@@ -193,6 +200,10 @@ export function action(meta?: Partial<ActionClass | ActionMethod>) {
   };
 }
 
+/**
+ * Inspect action metadata for a given class
+ * @param cls Action class
+ */
 export function inspectAction(cls: Constructor<any>) {
   const descriptor: ActionClass = Object.assign(
     {},
@@ -208,25 +219,123 @@ export function inspectAction(cls: Constructor<any>) {
   return descriptor;
 }
 
+/**
+ * Add action metadata to the dependency graph
+ * @param graph The topological sorting graph
+ * @param meta Action metadata
+ */
 function addActionToGraph(graph: any, meta: ActionMetadata) {
+  const exists = (g: string) => {
+    return graph._items.some((i: any) => i.group === g);
+  };
   // Add out edges for all fulfills
-  for (const p of meta.fulfills) {
-    if (graph.nodes.indexOf(p) === -1) {
-      graph.add(p, {group: p});
+  for (const f of meta.fulfills) {
+    if (!exists(f)) {
+      graph.add(f, {group: f});
     }
   }
-  // Add in edges for all fulfills
-  for (const c of meta.dependsOn) {
-    if (graph.nodes.indexOf(c) === -1) {
-      graph.add(c, {group: c});
+  // Add in edges for all dependsOn
+  for (const d of meta.dependsOn) {
+    if (!exists(d)) {
+      graph.add(d, {group: d});
     }
   }
-  // Add method between dependsOn and fulfills
+  // Add action between dependsOn and fulfills
   graph.add(meta, {
     group: meta.group,
     before: meta.fulfills,
     after: meta.dependsOn,
   });
+}
+
+/**
+ * See http://www.graphviz.org/content/dot-language
+ * @param graph The topological sorting graph
+ * @param attrs: An object of graphviz node attributes for state/class/method
+ */
+function generateDot(graph: any, attrs?: GraphvizNodeAttributes) {
+  const dot: string[] = [];
+  dot.push('digraph action_dependency_graph {');
+
+  const normalize = (group: string) => {
+    if (group.indexOf('class:') === 0) {
+      group = group.substring('class:'.length);
+    }
+    if (group.indexOf('method:') === 0) {
+      group = group.substring('method:'.length);
+    }
+    return `"${group}"`;
+  };
+
+  const {
+    stateAttrs = '[shape="ellipse"]',
+    classAttrs = '[shape="box"]',
+    methodAttrs = '[shape="box", style="rounded"]',
+  } =
+    attrs || {};
+
+  for (const item of graph._items) {
+    /*
+      interface Item {
+      seq: number;
+      sort?: number;
+      before: string[];
+      after: string[];
+      group: string;
+      node: any;
+    }
+    */
+    const before = item.before.map(normalize).join(' ');
+    const after = item.after.map(normalize).join(' ');
+    const group = normalize(item.group);
+
+    if (typeof item.node === 'string') {
+      dot.push(`  ${group} ${stateAttrs};`);
+    } else if (item.node.method) {
+      // Method
+      dot.push(`  ${group} ${methodAttrs};`);
+    } else {
+      // Class
+      dot.push(`  ${group} ${classAttrs};`);
+    }
+    if (before) dot.push(`  ${group} -> {${before}};`);
+    if (after) dot.push(`  {${after}} -> ${group};`);
+  }
+  dot.push('}\n');
+  return dot.join('\n');
+}
+
+/**
+ * Attributes to control how to render state/class/method nodes
+ */
+export interface GraphvizNodeAttributes {
+  stateAttrs?: string;
+  classAttrs?: string;
+  methodAttrs?: string;
+}
+
+/**
+ * Dependency graph for actions
+ */
+export class ActionGraph {
+  /**
+   * Ana array of action metadata
+   */
+  public actions: any[];
+
+  constructor(
+    public graph: any,
+    actions?: (ActionMethod | ActionClass | string)[],
+  ) {
+    this.actions = actions ? actions : graph.nodes;
+  }
+
+  /**
+   * Generate graphviz diagram in DOT format
+   */
+  toDot(attrs?: GraphvizNodeAttributes) {
+    return generateDot(this.graph, attrs);
+  }
 }
 
 /**
@@ -237,16 +346,19 @@ function addActionToGraph(graph: any, meta: ActionMetadata) {
 export function sortActionClasses(
   actionClasses: Constructor<any>[],
   removeKeys?: boolean,
-) {
+): ActionGraph {
   const graph = new Topo();
   for (const cls of actionClasses) {
     const meta = Reflector.getMetadata(ACTION_KEY, cls);
 
     addActionToGraph(graph, meta);
   }
-  if (!removeKeys) return graph.nodes;
+  if (!removeKeys) return new ActionGraph(graph);
   // Filter out the binding keys
-  return graph.nodes.filter((n: any) => typeof n === 'object');
+  return new ActionGraph(
+    graph,
+    graph.nodes.filter((n: any) => typeof n === 'object'),
+  );
 }
 
 /**
@@ -258,7 +370,7 @@ export function sortActions(
   actionClasses: Constructor<any>[],
   includeClasses?: boolean,
   removeKeys?: boolean,
-) {
+): ActionGraph {
   const graph = new Topo();
   for (const cls of actionClasses) {
     const meta = inspectAction(cls);
@@ -272,7 +384,10 @@ export function sortActions(
       addActionToGraph(graph, method);
     }
   }
-  if (!removeKeys) return graph.nodes;
+  if (!removeKeys) return new ActionGraph(graph);
   // Filter out the binding keys
-  return graph.nodes.filter((n: any) => typeof n === 'object');
+  return new ActionGraph(
+    graph,
+    graph.nodes.filter((n: any) => typeof n === 'object'),
+  );
 }
