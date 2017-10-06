@@ -4,9 +4,12 @@
 // License text available at https://opensource.org/licenses/MIT
 
 import {
+  Context,
   Reflector,
   Constructor,
   Injection,
+  BindingScope,
+  invokeMethod,
   describeInjectedArguments,
   describeInjectedProperties,
 } from '@loopback/context';
@@ -390,4 +393,51 @@ export function sortActions(
     graph,
     graph.nodes.filter((n: any) => typeof n === 'object'),
   );
+}
+
+export class Sequence extends Context {
+  private actionGraph: ActionGraph;
+
+  constructor(private actionClasses: Constructor<any>[], ctx?: Context) {
+    super(ctx);
+    this.bindClasses();
+  }
+
+  private bindClasses() {
+    for (const c of this.actionClasses) {
+      this
+        .bind('actions.' + c.name)
+        .toClass(c)
+        .inScope(BindingScope.SINGLETON);
+    }
+  }
+
+  private buildGraph() {
+    if (!this.actionGraph) {
+      this.actionGraph = sortActions(this.actionClasses, true, false);
+    }
+    return this.actionGraph;
+  }
+
+  toDOT() {
+    return this.buildGraph().toDot();
+  }
+
+  async run() {
+    const ctx = this;
+    const actions = this.buildGraph().actions;
+    for (const m of actions.filter((a: any) => !!a.method)) {
+      const v = await ctx.get('actions.' + m.actionClass.target.name);
+      const result = await invokeMethod(v, m.method, ctx);
+      if (result !== undefined && m.bindsReturnValueAs) {
+        ctx.bind(m.bindsReturnValueAs).to(result);
+      }
+    }
+  }
+
+  reset() {
+    this.registry.clear();
+    this.bindClasses();
+  }
+
 }

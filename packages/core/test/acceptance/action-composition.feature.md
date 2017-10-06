@@ -138,6 +138,9 @@ Action classes and methods can be then be sorted using
 
 ![action-dependency-graph](action-graph.png)
 
+**NOTE**: Maybe we should add `publishes` and `subscribes` attributes to support
+cases when an action is only triggered by certain events.
+
 ## Scenario: Compose action classes and methods
 
 Sorted action classes will be bound to the context:
@@ -172,6 +175,7 @@ for (const m of actions.filter((a: any) => !!a.method)) {
 
 ## Scenario: Different action styles
 
-- One-way (similar as Express middleware)
-- Cascading (similar as Koa middleware)
+- One-way (similar as Express middleware, can be phase-based)
+- Cascading (similar as Koa middleware, the action itself is responsible for
+  calling the next one, for example, `await next()`)
 - Result and error handling

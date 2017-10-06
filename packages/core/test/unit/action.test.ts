@@ -14,7 +14,13 @@ import {
   invokeMethod,
 } from '@loopback/context';
 
-import {action, inspectAction, sortActions, sortActionClasses} from '../..';
+import {
+  action,
+  Sequence,
+  inspectAction,
+  sortActions,
+  sortActionClasses,
+} from '../..';
 
 // tslint:disable:no-any
 describe('Action', () => {
@@ -359,23 +365,11 @@ describe('Action', () => {
     ctx.bind('log.prefix').to('LoopBack');
 
     const classes = [Logger, StopWatch, HttpServer, MethodInvoker, Tracing];
-    const actions = sortActions(classes, true, true).actions;
+    const sequence = new Sequence(classes, ctx);
 
-    for (const c of actions.filter((a: any) => !a.method)) {
-      ctx
-        .bind('actions.' + c.target.name)
-        .toClass(c.target)
-        .inScope(BindingScope.SINGLETON);
-    }
+    await sequence.run();
 
-    for (const m of actions.filter((a: any) => !!a.method)) {
-      const v = await ctx.get('actions.' + m.actionClass.target.name);
-      const result = await invokeMethod(v, m.method, ctx);
-      if (result !== undefined && m.bindsReturnValueAs) {
-        ctx.bind(m.bindsReturnValueAs).to(result);
-      }
-    }
-    const logger = await ctx.get('actions.Logger');
+    const logger = await sequence.get('actions.Logger');
     expect(logger.lastMessage).to.match(
       /\[INFO\]\[LoopBack\] TracingId: tracing:\d+,\d+, Duration: \d+/,
     );

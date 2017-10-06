@@ -7,7 +7,7 @@ import {Binding, BoundValue, ValueOrPromise} from './binding';
 import {isPromise} from './is-promise';
 
 export class Context {
-  private registry: Map<string, Binding>;
+  protected registry: Map<string, Binding>;
 
   constructor(private _parent?: Context) {
     this.registry = new Map();
